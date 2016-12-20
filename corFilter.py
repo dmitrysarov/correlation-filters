@@ -7,8 +7,9 @@ import numpy as np
 import os
 from scipy import misc
 from sklearn.metrics import roc_auc_score
-   
+import matplotlib.pyplot as plt  
 class correlationFilters():
+    
     def __init__(self,  corFilterSize = 64):
             self.corFilterSize = corFilterSize
             
@@ -53,9 +54,15 @@ class correlationFilters():
         return np.array(filesPath)
         
     def getTrueClassFilesList(self, trueClass):
+        '''
+        form trueClassFilesList for e.g. assembleFilter()
+        '''
         self.trueClassFilesList = self.getImageList(trueClass)
         
     def getFalseClassFilesList(self, trueClass):
+        '''
+        form falseClassFilesList for e.g. assembleFilter()
+        '''
         self.falseClassFilesList = self.getImageList(trueClass)        
         
     def getImage(self, imagePath, asRow = True, subMean = True, histEq = False, normVar = True):
@@ -66,7 +73,7 @@ class correlationFilters():
         if asRow == True:
             image = image.flatten()
         if histEq == True:
-            image = image # for fueture 
+            image = image # for future 
         if subMean == True:
             image = image - np.mean(image)
         if normVar == True:
@@ -105,38 +112,26 @@ class correlationFilters():
         xcorr = myifft(myfft(image1)*np.conj(myfft(image2)))
         return xcorr
         
+    def get_correlations(self):
+        '''
+        Use AUC ROC metric for evaluation of filter performance
+        '''
+        self.trueCorrelation = np.zeros(len(self.trueClassFilesList))
+        self.falseCorrelation = np.zeros(len(self.falseClassFilesList))
+        for i,path in enumerate(self.trueClassFilesList):
+            img = self.getImage(path, asRow = False)
+            self.trueCorrelation[i] = np.max(self.correlation(img))
+        for i,path in enumerate(self.falseClassFilesList):
+            img = self.getImage(path, asRow = False)
+            self.falseCorrelation[i] = np.max(self.correlation(img))   
+            
     def get_roc_auc(self):
         '''
-        Use AUC ROC metric for evaluation of filter performance on validation set
+        Use AUC ROC metric for evaluation of filter performance
         '''
-        pass
-        
-    def train(self,trueClass,falseClass = None):
-        '''
-        Train filter on certain condition using auc roc metric
-        '''
-        self.getTrueClassFilesList(trueClass)
-        trueImgeNumbers = np.random.choice(range(len(self.trueClassFilesList)), size = self.posEigen, replace=False)
-        if falseClass is not None:
-            self.getFalseClassFilesList(falseClass)
-#            falseImgeNumbers =  np.random.choice(range(len(self.falseClassFilesList)), size = self.negEigen, replace=False)          
-            score = 0.4
-            score_new = 0.5
-            while(True):
-                score = score_new
-                self.assembleFilter(self.trueClassFilesList[trueImgeNumbers], self.falseClassFilesList)        
-                score_new = self.get_roc_auc()
-                trueMin = np.argmin(self.trueCorrelation)
-                if any(trueImgeNumbers ==  trueMin):
-                    print 'image number %d (%s) repeated twice'%(trueMin,self.trueClassFilesList[trueMin])
-                    break
-                trueImgeNumbers = np.append(trueImgeNumbers,trueMin)
-#                falseMax = np.argmax(self.falseCorrelation)
-#                falseImgeNumbers = np.append(falseImgeNumbers, falseMax)
-                self.trueImgeNumbers = trueImgeNumbers
-                print score_new
-                print trueImgeNumbers
-#            self.assembleFilter(self.trueClassFilesList[trueImgeNumbers[:-1]], self.falseClassFilesList) 
+        self.get_correlations()
+        score = roc_auc_score(np.hstack((np.ones(len(self.trueClassFilesList)),np.zeros(len(self.falseClassFilesList)))),np.hstack((self.trueCorrelation,self.falseCorrelation)))
+        return score
             
     def assembleFilter(self, trueClassFilesList, falseClassFilesList = None, fastQC = False):
         '''
@@ -148,15 +143,15 @@ class correlationFilters():
     def detect(self,image,thresh=1.3, rawImage = False, scale = True):
         '''
         apply filter
+        return tuples of peak points
         '''
         if scale == True:
             image = misc.imresize(image, self.scale, interp = 'nearest')
         if rawImage == False:
             image = image - np.mean(image)
             image = image/np.var(image)
-        if self.corFilterName == 'QCF':
-            xcor = self.quadraticCorrelation(image)
-            xcor = xcor - np.min(xcor)
+        xcor = self.correlation(image)
+        xcor = xcor - np.min(xcor)
         xcor = xcor/np.mean(xcor)
         thresh_xcor = np.zeros(xcor.shape)
 #        thresh = np.max(xcor)*thresh
@@ -175,27 +170,36 @@ class correlationFilters():
                 y = y_croped + 10
                 x = x_croped + 10
                 thresh_xcor[y-9:y+9,x-9:x+9] = 0 # maximum value window elimination
-                y_list, x_list = np.array([int(y/self.scale)]),np.array([int(x/self.scale)])
+                y_list, x_list = np.array([int(y/self.scale)]),np.array([int(x/self.scale)]) # save peak value to list
             else:
                 y_croped,x_croped = zip(*np.where(thresh_xcor_crop == np.max(thresh_xcor_crop)))[0]
                 y = y_croped + 10
                 x = x_croped + 10
+                thresh_xcor[y-9:y+9,x-9:x+9] = 0 # maximum value window elimination
                 y_list = np.append(y_list,int(y/self.scale))
                 x_list = np.append(x_list,int(x/self.scale))
-                thresh_xcor[y-9:y+9,x-9:x+9] = 0 # maximum value window elimination
 #                print x,y
         if x_list is not None and  y_list is not None:
             points = zip(x_list, y_list)
         return points
         
 class quadraticFilters(correlationFilters):
-'''
-super class for all quadratic correlation filters
-'''
+    '''
+    super class for all quadratic correlation filters
+    '''
+    def plots(self):
+        plt.figure()
+        plt.plot(self.trueCorrelation,'r')
+        plt.hold('on')
+        plt.plot(self.falseCorrelation,'g')
+        plt.figure()
+        plt.plot(self.eigenValues)
+        
     def __init__(self, posEigen = 1, negEigen = 1):
+        correlationFilters.__init__(self)
         self.posEigen = posEigen
         self.negEigen = negEigen
-
+        
     def quadraticCorrelation(self,image, crop = True):
         '''
         Quadratic filter output calculation
@@ -212,30 +216,48 @@ super class for all quadratic correlation filters
         if self.fullField is True:
             if crop is True:
                 qxcorr = qxcorr[qxcorr.shape[0]/4:qxcorr.shape[0]*3/4,qxcorr.shape[1]/4:qxcorr.shape[1]*3/4]
-        return qxcorr 
+        return qxcorr
         
-    def get_roc_auc(self):
+    def correlation(self,image):
         '''
-        Use AUC ROC metric for evaluation of filter performance
+        this method provide commone interface for detection(), get_roc_auc() e.t.c. methods 
         '''
-        self.trueCorrelation = np.zeros(len(self.trueClassFilesList))
-        self.falseCorrelation = np.zeros(len(self.falseClassFilesList))
-        for i,path in enumerate(self.trueClassFilesList):
-            img = self.getImage(path, asRow = False)
-            self.trueCorrelation[i] = np.max(self.quadraticCorrelation(img))
-        for i,path in enumerate(self.falseClassFilesList):
-            img = self.getImage(path, asRow = False)
-            self.falseCorrelation[i] = np.max(self.quadraticCorrelation(img))
-        score = roc_auc_score(np.hstack((np.ones(len(self.trueClassFilesList)),np.zeros(len(self.falseClassFilesList)))),np.hstack((self.trueCorrelation,self.falseCorrelation)))
-        return score
-        
+        return self.quadraticCorrelation(image)        
+            
+    def train(self,trueClass,falseClass = None):
+        '''
+        Train filter on certain condition (e.g. must be unique images in filter) using auc roc metric
+        '''
+        self.getTrueClassFilesList(trueClass)
+        trueImgeNumbers = np.random.choice(range(len(self.trueClassFilesList)), size = self.posEigen, replace=False)
+        if falseClass is not None:
+            self.getFalseClassFilesList(falseClass)
+            falseImgeNumbers =  np.random.choice(range(len(self.falseClassFilesList)), size = self.negEigen, replace=False)          
+            while(True):
+                self.assembleFilter(self.trueClassFilesList[trueImgeNumbers], self.falseClassFilesList[falseImgeNumbers], fastQC = True)        
+                self.get_correlations()
+                trueMin = np.argmin(self.trueCorrelation)
+                if any(trueImgeNumbers ==  trueMin):
+                    print 'image number %d (%s) repeated twice'%(trueMin,self.trueClassFilesList[trueMin])
+                    break
+                trueImgeNumbers = np.append(trueImgeNumbers,trueMin)
+                falseMax = np.argmax(self.falseCorrelation)
+                if any(falseImgeNumbers ==  falseMax):
+                    print 'image number %d (%s) repeated twice'%(falseMax,self.falseClassFilesList[falseMax])
+                    break                
+                falseImgeNumbers = np.append(falseImgeNumbers, falseMax)
+            self.trueImgeNumbers = trueImgeNumbers
+            self.falseImgeNumbers = falseImgeNumbers
+            self.assembleFilter(self.trueClassFilesList[trueImgeNumbers], self.falseClassFilesList[falseImgeNumbers]) 
+
 class QCF(quadraticFilters):
-'''
-quadratic correlation filter[1]. design of QCF uses thewell-known Fukunaga Koontz transform 
-[1]A. Mahalanobis, R. R. Muise, S. R. Stanﬁll, and A. Van Nevel,
-“Design and application of quadratic correlation ﬁlters for tar-
-get detection,” IEEE Trans. Aerosp. Electron., to be published.
-'''
+    '''
+    quadratic correlation filter[1]. design of QCF uses thewell-known Fukunaga Koontz transform 
+    [1]A. Mahalanobis, R. R. Muise, S. R. Stanﬁll, and A. Van Nevel,
+    “Design and application of quadratic correlation ﬁlters for tar-
+    get detection,” IEEE Trans. Aerosp. Electron., to be published.
+    '''
+    
     def assembleFilter(self, trueClassFilesList, falseClassFilesList = None, fastQC = False):
         '''
         Assemble the filter from availble images in trueClassFilesList falseClassFilesList
@@ -310,14 +332,15 @@ get detection,” IEEE Trans. Aerosp. Electron., to be published.
              self.eigenValues = eigenValues
              self.eigenVector = eigenVector
              del eigenValue, eigenVector
+             
 class RQQCF(quadraticFilters):
-'''
-Rayleigh quotient quadratic filter[1]
-[1]Abhijit Mahalanobis, Robert R. Muise, and S. Robert Stanfill, 
-"Quadratic correlation filter design methodology for target detection and surveillance applications," 
-Appl. Opt. 43, 5198-5205 (2004)
-'''
-    def assembleFilter(self, trueClassFilesList, falseClassFilesList = None):
+    '''
+    Rayleigh quotient quadratic filter[1]
+    [1]Abhijit Mahalanobis, Robert R. Muise, and S. Robert Stanfill, 
+    "Quadratic correlation filter design methodology for target detection and surveillance applications," 
+    Appl. Opt. 43, 5198-5205 (2004)
+    '''
+    def assembleFilter(self, trueClassFilesList, falseClassFilesList = None, fastQC=False):
          for i,imagePath in enumerate(trueClassFilesList):
              if i == 0:
                  tempImg = self.getImage(imagePath)
@@ -329,6 +352,7 @@ Appl. Opt. 43, 5198-5205 (2004)
          trueCorMat = np.dot(trueImagesMat,np.transpose(trueImagesMat)) #true correlation matrix
          del trueImagesMat, tempImg
          difCorMat = trueCorMat #if there is no false class then correlation matrix difference is a simple true cor matrix
+         sumCorMat = trueCorMat       
          del trueCorMat
          if falseClassFilesList is not None: 
              for i,imagePath in enumerate(falseClassFilesList):
@@ -342,9 +366,12 @@ Appl. Opt. 43, 5198-5205 (2004)
              falseCorMat = np.dot(falseImagesMat,np.transpose(falseImagesMat)) #false correlation matrix
              del falseImagesMat, tempImg
              difCorMat = difCorMat - falseCorMat #difference of correlation matrices
+             sumCorMat = sumCorMat + falseCorMat #summation of correlation matrices
              del falseCorMat
-         eigenValue, eigenVector = np.linalg.eig(difCorMat)
+         difInvSum = difCorMat.dot(np.linalg.inv(sumCorMat))
+         del difCorMat, sumCorMat
+         eigenValue, eigenVector = np.linalg.eig(difInvSum)
          eigenVector = np.real(eigenVector)
-         del difCorMat
+         del difInvSum
          self.eigenValues, self.eigenVector = zip(*sorted(zip(eigenValue, np.transpose(eigenVector)),reverse=True))
          del eigenValue, eigenVector
