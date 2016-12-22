@@ -321,7 +321,7 @@ class QCF(quadraticFilters):
              del A
              eigenValues, eigenVector = zip(*sorted(zip(eigenValue, eigenVector),reverse=True))
              eigenVector = np.real(eigenVector) + np.imag(eigenVector)
-             self.eigenValues = eigenValues
+             self.eigenValue = eigenValue
              self.eigenVector = eigenVector
              del eigenValue, eigenVector
              
@@ -348,7 +348,6 @@ class RQQCF(quadraticFilters):
                  trueImagesMat[:,trueClassNum] = tempImg
                  continue
              trueImagesMat[:,trueClassNum] = self.getImage(imagePath)
-         trueImagesMat = trueImagesMat
          trueCorMat = np.dot(trueImagesMat,np.transpose(trueImagesMat))/(trueClassNum+1) #true correlation matrix       
          for falseClassNum,imagePath in enumerate(falseClassFilesList):
              if falseClassNum == 0:
@@ -357,11 +356,10 @@ class RQQCF(quadraticFilters):
                  falseImagesMat[:,falseClassNum] = tempImg
                  continue
              falseImagesMat[:,falseClassNum] = self.getImage(imagePath)
-             falseImagesMat = falseImagesMat
-             falseCorMat = np.dot(falseImagesMat,np.transpose(falseImagesMat))/(falseClassNum+1) #false correlation matrix
+         falseCorMat = np.dot(falseImagesMat,np.transpose(falseImagesMat))/(falseClassNum+1) #false correlation matrix
          difCorMat = trueCorMat - falseCorMat #difference of correlation matrices
-#         sumCorMat = trueCorMat + falseCorMat #summation of correlation matrices
-#         difInvSum = difCorMat.dot(np.linalg.inv(sumCorMat))
-         eigenValue, eigenVector = np.linalg.eig(difCorMat)
+         sumCorMat = trueCorMat + falseCorMat #summation of correlation matrices
+         difInvSum = difCorMat.dot(np.linalg.inv(sumCorMat))
+         eigenValue, eigenVector = np.linalg.eig(difInvSum)
          eigenVector = np.real(eigenVector)
          self.eigenValues, self.eigenVector = zip(*sorted(zip(eigenValue, np.transpose(eigenVector)),reverse=True))
