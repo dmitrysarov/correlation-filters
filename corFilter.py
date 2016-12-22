@@ -258,46 +258,39 @@ class QCF(quadraticFilters):
     get detection,” IEEE Trans. Aerosp. Electron., to be published.
     '''
     
-    def assembleFilter(self, trueClassFilesList, falseClassFilesList = None, fastQC = False):
+    def assembleFilter(self, trueClassFilesList = None, falseClassFilesList = None, fastQC = False):
         '''
         Assemble the filter from availble images in trueClassFilesList falseClassFilesList
         '''
         if isinstance(trueClassFilesList, (str, unicode)):
-             trueClassFilesList = [trueClassFilesList] 
-        if falseClassFilesList is not None:
-             if isinstance(falseClassFilesList, (str, unicode)):
-                  falseClassFilesList = [falseClassFilesList] 
+            trueClassFilesList = [trueClassFilesList] 
+        if isinstance(falseClassFilesList, (str, unicode)):
+            falseClassFilesList = [falseClassFilesList] 
+        if trueClassFilesList is None:
+            trueClassFilesList = self.trueClassFilesList
+        if falseClassFilesList is None:
+            falseClassFilesList = self.falseClassFilesList
         if fastQC == False:
-             for i,imagePath in enumerate(trueClassFilesList):
-                 if i == 0:
+             for trueClassNum,imagePath in enumerate(trueClassFilesList):
+                 if trueClassNum == 0:
                      tempImg = self.getImage(imagePath)
                      trueImagesMat = np.zeros((len(tempImg),len(trueClassFilesList)))
-                     trueImagesMat[:,i] = tempImg
+                     trueImagesMat[:,trueClassNum] = tempImg
                      continue
-                 trueImagesMat[:,i] = self.getImage(imagePath)
-             trueImagesMat = trueImagesMat/np.sqrt(i+1)
-             trueCorMat = np.dot(trueImagesMat,np.transpose(trueImagesMat)) #true correlation matrix
-             del trueImagesMat, tempImg
-             difCorMat = trueCorMat #if there is no false class then correlation matrix difference is a simple true cor matrix
-             del trueCorMat
-             if falseClassFilesList is not None: 
-                 for i,imagePath in enumerate(falseClassFilesList):
-                     if i == 0:
-                         tempImg = self.getImage(imagePath)
-                         falseImagesMat = np.zeros((len(tempImg),len(falseClassFilesList)))
-                         falseImagesMat[:,i] = tempImg
-                         continue
-                     falseImagesMat[:,i] = self.getImage(imagePath)
-                 falseImagesMat = falseImagesMat/np.sqrt(i+1)
-                 falseCorMat = np.dot(falseImagesMat,np.transpose(falseImagesMat)) #false correlation matrix
-                 del falseImagesMat, tempImg
-                 difCorMat = difCorMat - falseCorMat #difference of correlation matrices
-                 del falseCorMat
+                 trueImagesMat[:,trueClassNum] = self.getImage(imagePath)
+             trueCorMat = np.dot(trueImagesMat,np.transpose(trueImagesMat))/(trueClassNum+1) #true correlation matrix
+             for falseClassNum,imagePath in enumerate(falseClassFilesList):
+                 if falseClassNum == 0:
+                     tempImg = self.getImage(imagePath)
+                     falseImagesMat = np.zeros((len(tempImg),len(falseClassFilesList)))
+                     falseImagesMat[:,falseClassNum] = tempImg
+                     continue
+                 falseImagesMat[:,falseClassNum] = self.getImage(imagePath)
+             falseCorMat = np.dot(falseImagesMat,np.transpose(falseImagesMat))/(falseClassNum+1) #false correlation matrix
+             difCorMat = trueCorMat - falseCorMat #difference of correlation matrices
              eigenValue, eigenVector = np.linalg.eig(difCorMat)
              eigenVector = np.real(eigenVector)
-             del difCorMat
              self.eigenValues, self.eigenVector = zip(*sorted(zip(eigenValue, np.transpose(eigenVector)),reverse=True))
-             del eigenValue, eigenVector
         '''
         FAST EIGEN VALUE CALCULATION. Uses the correspondence of outer and inner matrices eigen vectors
         Use it when training set size less then number of pixels
@@ -312,17 +305,16 @@ class QCF(quadraticFilters):
                  trueImagesMat[:,trueClassNum] = self.getImage(imagePath)
              A = trueImagesMat/np.sqrt(trueClassNum+1)
              del trueImagesMat
-             if falseClassFilesList is not None: 
-                 for falseClassNum,imagePath in enumerate(falseClassFilesList):
-                     if falseClassNum == 0:
-                         tempImg = self.getImage(imagePath)
-                         falseImagesMat = np.zeros((len(tempImg),len(falseClassFilesList)))
-                         falseImagesMat[:,falseClassNum] = tempImg
-                         continue
-                     falseImagesMat[:,falseClassNum] = self.getImage(imagePath)
-                 falseImagesMat = 1j*falseImagesMat/np.sqrt(falseClassNum+1)
-                 A = np.hstack((A,falseImagesMat)) 
-                 del falseImagesMat
+             for falseClassNum,imagePath in enumerate(falseClassFilesList):
+                 if falseClassNum == 0:
+                     tempImg = self.getImage(imagePath)
+                     falseImagesMat = np.zeros((len(tempImg),len(falseClassFilesList)))
+                     falseImagesMat[:,falseClassNum] = tempImg
+                     continue
+                 falseImagesMat[:,falseClassNum] = self.getImage(imagePath)
+             falseImagesMat = 1j*falseImagesMat/np.sqrt(falseClassNum+1)
+             A = np.hstack((A,falseImagesMat)) 
+             del falseImagesMat
              eigenValue, eigenVector = np.linalg.eig(np.dot(np.transpose(A),A))
              eigenVector = np.dot(A,eigenVector)
              eigenVector = map(lambda x,y: x/y, eigenVector.T, np.sqrt(eigenValue))
@@ -340,38 +332,36 @@ class RQQCF(quadraticFilters):
     "Quadratic correlation filter design methodology for target detection and surveillance applications," 
     Appl. Opt. 43, 5198-5205 (2004)
     '''
-    def assembleFilter(self, trueClassFilesList, falseClassFilesList = None, fastQC=False):
-         for i,imagePath in enumerate(trueClassFilesList):
-             if i == 0:
+    def assembleFilter(self, trueClassFilesList = None, falseClassFilesList = None, fastQC=False):
+         if isinstance(trueClassFilesList, (str, unicode)):
+             trueClassFilesList = [trueClassFilesList] 
+         if isinstance(falseClassFilesList, (str, unicode)):
+             falseClassFilesList = [falseClassFilesList] 
+         if trueClassFilesList is None:
+             trueClassFilesList = self.trueClassFilesList
+         if falseClassFilesList is None:
+             falseClassFilesList = self.falseClassFilesList
+         for trueClassNum,imagePath in enumerate(trueClassFilesList):
+             if trueClassNum == 0:
                  tempImg = self.getImage(imagePath)
                  trueImagesMat = np.zeros((len(tempImg),len(trueClassFilesList)))
-                 trueImagesMat[:,i] = tempImg
+                 trueImagesMat[:,trueClassNum] = tempImg
                  continue
-             trueImagesMat[:,i] = self.getImage(imagePath)
-         trueImagesMat = trueImagesMat/np.sqrt(i+1)
-         trueCorMat = np.dot(trueImagesMat,np.transpose(trueImagesMat)) #true correlation matrix
-         del trueImagesMat, tempImg
-         difCorMat = trueCorMat #if there is no false class then correlation matrix difference is a simple true cor matrix
-         sumCorMat = trueCorMat       
-         del trueCorMat
-         if falseClassFilesList is not None: 
-             for i,imagePath in enumerate(falseClassFilesList):
-                 if i == 0:
-                     tempImg = self.getImage(imagePath)
-                     falseImagesMat = np.zeros((len(tempImg),len(falseClassFilesList)))
-                     falseImagesMat[:,i] = tempImg
-                     continue
-                 falseImagesMat[:,i] = self.getImage(imagePath)
-             falseImagesMat = falseImagesMat/np.sqrt(i+1)
-             falseCorMat = np.dot(falseImagesMat,np.transpose(falseImagesMat)) #false correlation matrix
-             del falseImagesMat, tempImg
-             difCorMat = difCorMat - falseCorMat #difference of correlation matrices
-             sumCorMat = sumCorMat + falseCorMat #summation of correlation matrices
-             del falseCorMat
-         difInvSum = difCorMat.dot(np.linalg.inv(sumCorMat))
-         del difCorMat, sumCorMat
-         eigenValue, eigenVector = np.linalg.eig(difInvSum)
+             trueImagesMat[:,trueClassNum] = self.getImage(imagePath)
+         trueImagesMat = trueImagesMat
+         trueCorMat = np.dot(trueImagesMat,np.transpose(trueImagesMat))/(trueClassNum+1) #true correlation matrix       
+         for falseClassNum,imagePath in enumerate(falseClassFilesList):
+             if falseClassNum == 0:
+                 tempImg = self.getImage(imagePath)
+                 falseImagesMat = np.zeros((len(tempImg),len(falseClassFilesList)))
+                 falseImagesMat[:,falseClassNum] = tempImg
+                 continue
+             falseImagesMat[:,falseClassNum] = self.getImage(imagePath)
+             falseImagesMat = falseImagesMat
+             falseCorMat = np.dot(falseImagesMat,np.transpose(falseImagesMat))/(falseClassNum+1) #false correlation matrix
+         difCorMat = trueCorMat - falseCorMat #difference of correlation matrices
+#         sumCorMat = trueCorMat + falseCorMat #summation of correlation matrices
+#         difInvSum = difCorMat.dot(np.linalg.inv(sumCorMat))
+         eigenValue, eigenVector = np.linalg.eig(difCorMat)
          eigenVector = np.real(eigenVector)
-         del difInvSum
          self.eigenValues, self.eigenVector = zip(*sorted(zip(eigenValue, np.transpose(eigenVector)),reverse=True))
-         del eigenValue, eigenVector
