@@ -8,9 +8,10 @@ import os
 from scipy import misc
 from sklearn.metrics import roc_auc_score
 import matplotlib.pyplot as plt  
+from operator import itemgetter
 class correlationFilters():
     
-    def __init__(self,  corFilterSize = 64):
+    def __init__(self,  corFilterSize):
             self.corFilterSize = corFilterSize
             
     def prepareTrueImages(self, intialTrueImagesFolder, finalTrueImagesFolder):
@@ -20,21 +21,21 @@ class correlationFilters():
         if not os.path.exists(finalTrueImagesFolder):
             os.mkdir(finalTrueImagesFolder)
         filesName = [name for name in os.listdir(intialTrueImagesFolder) 
-                            if os.path.splitext(name)[1] in ['.jpg','png','tif']]
+                            if os.path.splitext(name)[1] in ['.jpg','.png','.tif']]
         for i in filesName:
             img = misc.imread(os.path.join(intialTrueImagesFolder,i), flatten = True)            
             new_img = misc.imresize(img, (self.corFilterSize, self.corFilterSize), interp = 'nearest')      
             misc.imsave(os.path.join(finalTrueImagesFolder,i), new_img)
         self.scale = float(self.corFilterSize)/img.shape[0]
         
-    def prepareFalseImages(self, intialFalseImagesFolder, finalFalseImagesFolder, falseChipsNum = 2000):
+    def prepareFalseImages(self, intialFalseImagesFolder, finalFalseImagesFolder, falseChipsNum = 20000):
         '''
         truncate images to proper size and scale. Input image can be of arbitrary size
         '''
         if not os.path.exists(finalFalseImagesFolder):
             os.mkdir(finalFalseImagesFolder)
         filesName = [name for name in os.listdir(intialFalseImagesFolder) 
-                            if os.path.splitext(name)[1] in ['.jpg','png','tif']]
+                            if os.path.splitext(name)[1] in ['.jpg','.png','.tif']]
         for i in xrange(falseChipsNum):
             f = filesName[np.random.randint(len(filesName))]
             img = misc.imread(os.path.join(intialFalseImagesFolder,f), flatten = True)            
@@ -50,7 +51,7 @@ class correlationFilters():
         '''
         filesPath = [os.path.join(folder,name) for name 
         in os.listdir(folder) if os.path.splitext(name)[1]
-        in ['.jpg','png','tif']]
+        in ['.jpg','.png','.tif']]
         return np.array(filesPath)
         
     def getTrueClassFilesList(self, trueClass):
@@ -67,6 +68,7 @@ class correlationFilters():
         
     def getImage(self, imagePath, asRow = True, subMean = True, histEq = False, normVar = True):
         image = misc.imread(imagePath, flatten = True) #read image as grayscale
+        image = np.float64(image)
         self.imageSize = image.shape
         if image.shape[0] != self.corFilterSize:
             image = misc.imresize(image,(self.corFilterSize,self.corFilterSize), interp = 'nearest')
@@ -129,7 +131,8 @@ class correlationFilters():
         '''
         Use AUC ROC metric for evaluation of filter performance
         '''
-        self.get_correlations()
+        if not hasattr(self, 'trueCorrelation'):
+            self.get_correlations()
         score = roc_auc_score(np.hstack((np.ones(len(self.trueClassFilesList)),np.zeros(len(self.falseClassFilesList)))),np.hstack((self.trueCorrelation,self.falseCorrelation)))
         return score
             
@@ -186,20 +189,22 @@ class correlationFilters():
 class quadraticFilters(correlationFilters):
     '''
     super class for all quadratic correlation filters
-    '''
-    def plots(self):
-        plt.figure()
-        plt.plot(self.trueCorrelation,'r')
-        plt.hold('on')
-        plt.plot(self.falseCorrelation,'g')
-        plt.figure()
-        plt.plot(self.eigenValues)
-        
-    def __init__(self, posEigen = 1, negEigen = 1):
-        correlationFilters.__init__(self)
+    '''        
+    def __init__(self, corFilterSize, posEigen = 1, negEigen = 1):
+        self.corFilterSize = corFilterSize
         self.posEigen = posEigen
         self.negEigen = negEigen
         
+    def plots(self):
+        if hasattr(self, 'trueCorrelation'):
+            plt.figure()
+            plt.plot(self.trueCorrelation,'r')
+            plt.figure()
+            plt.plot(self.falseCorrelation,'g')
+            plt.hold('off')
+        if hasattr(self, 'eigenValue'):    
+            plt.figure()
+            plt.plot(self.eigenValue)        
     def quadraticCorrelation(self,image, crop = True):
         '''
         Quadratic filter output calculation
@@ -290,7 +295,8 @@ class QCF(quadraticFilters):
              difCorMat = trueCorMat - falseCorMat #difference of correlation matrices
              eigenValue, eigenVector = np.linalg.eig(difCorMat)
              eigenVector = np.real(eigenVector)
-             self.eigenValues, self.eigenVector = zip(*sorted(zip(eigenValue, np.transpose(eigenVector)),reverse=True))
+             eigenValue = np.real(eigenValue)
+             self.eigenValue, self.eigenVector = zip(*sorted(zip(eigenValue, np.transpose(eigenVector)),key = itemgetter(0),reverse=True))
         '''
         FAST EIGEN VALUE CALCULATION. Uses the correspondence of outer and inner matrices eigen vectors
         Use it when training set size less then number of pixels
@@ -314,16 +320,14 @@ class QCF(quadraticFilters):
                  falseImagesMat[:,falseClassNum] = self.getImage(imagePath)
              falseImagesMat = 1j*falseImagesMat/np.sqrt(falseClassNum+1)
              A = np.hstack((A,falseImagesMat)) 
-             del falseImagesMat
              eigenValue, eigenVector = np.linalg.eig(np.dot(np.transpose(A),A))
              eigenVector = np.dot(A,eigenVector)
              eigenVector = map(lambda x,y: x/y, eigenVector.T, np.sqrt(eigenValue))
-             del A
-             eigenValues, eigenVector = zip(*sorted(zip(eigenValue, eigenVector),reverse=True))
+             eigenValue, eigenVector = zip(*sorted(zip(eigenValue, eigenVector),key = itemgetter(0),reverse=True))
              eigenVector = np.real(eigenVector) + np.imag(eigenVector)
              self.eigenValue = eigenValue
              self.eigenVector = eigenVector
-             del eigenValue, eigenVector
+
              
 class RQQCF(quadraticFilters):
     '''
@@ -359,7 +363,15 @@ class RQQCF(quadraticFilters):
          falseCorMat = np.dot(falseImagesMat,np.transpose(falseImagesMat))/(falseClassNum+1) #false correlation matrix
          difCorMat = trueCorMat - falseCorMat #difference of correlation matrices
          sumCorMat = trueCorMat + falseCorMat #summation of correlation matrices
-         difInvSum = difCorMat.dot(np.linalg.inv(sumCorMat))
+         self.difCorMat = difCorMat
+         self.sumCorMat = sumCorMat
+         difInvSum = np.linalg.solve(sumCorMat,difCorMat)
+         self.difInvSum = difInvSum
          eigenValue, eigenVector = np.linalg.eig(difInvSum)
          eigenVector = np.real(eigenVector)
-         self.eigenValues, self.eigenVector = zip(*sorted(zip(eigenValue, np.transpose(eigenVector)),reverse=True))
+         self.eigenValue, self.eigenVector = zip(*sorted(zip(eigenValue, np.transpose(eigenVector)),key = itemgetter(0),reverse=True))
+
+#cf = RQQCF()
+#cf.getTrueClassFilesList(r'D:\Projects\python\face\true_p')
+#cf.getFalseClassFilesList(r'D:\Projects\python\face\false_p')        
+#cf.assembleFilter()
