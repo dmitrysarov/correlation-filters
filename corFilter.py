@@ -70,20 +70,21 @@ class correlationFilters():
         image = misc.imread(imagePath, flatten = True) #read image as grayscale
         image = np.float64(image)
         self.imageSize = image.shape
+        if cosWin == True:
+            hammingWindow = np.sqrt(np.outer(np.hamming(self.imageSize[0]),np.hamming(self.imageSize[1])))
+            image = image*hammingWindow
         if image.shape[0] != self.corFilterSize:
             image = misc.imresize(image,(self.corFilterSize,self.corFilterSize), interp = 'nearest')
-        if asRow == True:
-            image = image.flatten()
         if histEq == True:
             image = image # for future 
+        if log == True:
+            image = np.log(np.float32(image)+1.0)  
         if subMean == True:
             image = image - np.mean(image)
         if normVar == True:
-            image = image / (np.var(image)+1e-5)
-        if cosWin == True:
-            
-        if log == True:
-            image = np.log(np.float32(image)+1.0)            
+            image = image / (np.var(image)+1e-5)          
+        if asRow == True:
+            image = image.flatten()
         return image
         
     def fCor(self,image1,image2, fullField = False):
