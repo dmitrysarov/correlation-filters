@@ -66,7 +66,7 @@ class correlationFilters():
         '''
         self.falseClassFilesList = self.getImageList(trueClass)        
         
-    def getImage(self, imagePath, asRow = True, subMean = True, histEq = False, normVar = True):
+    def getImage(self, imagePath, asRow = True, subMean = True,  normVar = True, cosWin = False, log = False, histEq = False):
         image = misc.imread(imagePath, flatten = True) #read image as grayscale
         image = np.float64(image)
         self.imageSize = image.shape
@@ -79,7 +79,11 @@ class correlationFilters():
         if subMean == True:
             image = image - np.mean(image)
         if normVar == True:
-            image = image / np.var(image)
+            image = image / (np.var(image)+1e-5)
+        if cosWin == True:
+            
+        if log == True:
+            image = np.log(np.float32(image)+1.0)            
         return image
         
     def fCor(self,image1,image2, fullField = False):
