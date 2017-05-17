@@ -66,20 +66,25 @@ class correlationFilters():
         '''
         self.falseClassFilesList = self.getImageList(trueClass)        
         
-    def getImage(self, imagePath, asRow = True, subMean = True, histEq = False, normVar = True):
+    def getImage(self, imagePath, asRow = True, subMean = True,  normVar = True, cosWin = False, log = False, histEq = False):
         image = misc.imread(imagePath, flatten = True) #read image as grayscale
         image = np.float64(image)
         self.imageSize = image.shape
+        if cosWin == True:
+            hammingWindow = np.sqrt(np.outer(np.hamming(self.imageSize[0]),np.hamming(self.imageSize[1])))
+            image = image*hammingWindow
         if image.shape[0] != self.corFilterSize:
             image = misc.imresize(image,(self.corFilterSize,self.corFilterSize), interp = 'nearest')
-        if asRow == True:
-            image = image.flatten()
         if histEq == True:
             image = image # for future 
+        if log == True:
+            image = np.log(np.float32(image)+1.0)  
         if subMean == True:
             image = image - np.mean(image)
         if normVar == True:
-            image = image / np.var(image)
+            image = image / (np.var(image)+1e-5)          
+        if asRow == True:
+            image = image.flatten()
         return image
         
     def fCor(self,image1,image2, fullField = False):
@@ -116,8 +121,9 @@ class correlationFilters():
         
     def get_correlations(self):
         '''
-        Use AUC ROC metric for evaluation of filter performance
+        Calculate correlations for true trueClassFilesList and falseClassFilesList
         '''
+        print 'calculate cross-correlations...'
         self.trueCorrelation = np.zeros(len(self.trueClassFilesList))
         self.falseCorrelation = np.zeros(len(self.falseClassFilesList))
         for i,path in enumerate(self.trueClassFilesList):
@@ -131,6 +137,7 @@ class correlationFilters():
         '''
         Use AUC ROC metric for evaluation of filter performance
         '''
+        print 'calculate ROC AUC ...'
         if not hasattr(self, 'trueCorrelation'):
             self.get_correlations()
         score = roc_auc_score(np.hstack((np.ones(len(self.trueClassFilesList)),np.zeros(len(self.falseClassFilesList)))),np.hstack((self.trueCorrelation,self.falseCorrelation)))
@@ -190,21 +197,24 @@ class quadraticFilters(correlationFilters):
     '''
     super class for all quadratic correlation filters
     '''        
-    def __init__(self, corFilterSize, posEigen = 1, negEigen = 1):
+    def __init__(self, corFilterSize, posEigen = 1, negEigen = 1, fastQC = False):
         self.corFilterSize = corFilterSize
         self.posEigen = posEigen
         self.negEigen = negEigen
+        self.fastQC = fastQC
         
     def plots(self):
         if hasattr(self, 'trueCorrelation'):
             plt.figure()
             plt.plot(self.trueCorrelation,'r')
+            plt.title('true correlations')
             plt.figure()
             plt.plot(self.falseCorrelation,'g')
-            plt.hold('off')
+            plt.title('false correlations')
         if hasattr(self, 'eigenValue'):    
             plt.figure()
-            plt.plot(self.eigenValue)        
+            plt.plot(self.eigenValue)
+            plt.title('eigen value')
     def quadraticCorrelation(self,image, crop = True):
         '''
         Quadratic filter output calculation
@@ -233,13 +243,14 @@ class quadraticFilters(correlationFilters):
         '''
         Train filter on certain condition (e.g. must be unique images in filter) using auc roc metric
         '''
+        print 'filter training ...'
         self.getTrueClassFilesList(trueClass)
         trueImgeNumbers = np.random.choice(range(len(self.trueClassFilesList)), size = self.posEigen, replace=False)
         if falseClass is not None:
             self.getFalseClassFilesList(falseClass)
             falseImgeNumbers =  np.random.choice(range(len(self.falseClassFilesList)), size = self.negEigen, replace=False)          
             while(True):
-                self.assembleFilter(self.trueClassFilesList[trueImgeNumbers], self.falseClassFilesList[falseImgeNumbers], fastQC = True)        
+                self.assembleFilter(self.trueClassFilesList[trueImgeNumbers], self.falseClassFilesList[falseImgeNumbers])        
                 self.get_correlations()
                 trueMin = np.argmin(self.trueCorrelation)
                 if any(trueImgeNumbers ==  trueMin):
@@ -263,10 +274,12 @@ class QCF(quadraticFilters):
     get detection,” IEEE Trans. Aerosp. Electron., to be published.
     '''
     
-    def assembleFilter(self, trueClassFilesList = None, falseClassFilesList = None, fastQC = False):
+    def assembleFilter(self, trueClassFilesList = None, falseClassFilesList = None):
         '''
-        Assemble the filter from availble images in trueClassFilesList falseClassFilesList
+        Assemble the filter from availble images in trueClassFilesList falseClassFilesList (addresses of files).
+        trueClassFilesList falseClassFilesList can be form be .prepareTrueImages .prepareFalseImages
         '''
+        print 'filter assembling ...'
         if isinstance(trueClassFilesList, (str, unicode)):
             trueClassFilesList = [trueClassFilesList] 
         if isinstance(falseClassFilesList, (str, unicode)):
@@ -275,7 +288,7 @@ class QCF(quadraticFilters):
             trueClassFilesList = self.trueClassFilesList
         if falseClassFilesList is None:
             falseClassFilesList = self.falseClassFilesList
-        if fastQC == False:
+        if self.fastQC == False:
              for trueClassNum,imagePath in enumerate(trueClassFilesList):
                  if trueClassNum == 0:
                      tempImg = self.getImage(imagePath)
@@ -301,7 +314,7 @@ class QCF(quadraticFilters):
         FAST EIGEN VALUE CALCULATION. Uses the correspondence of outer and inner matrices eigen vectors
         Use it when training set size less then number of pixels
         '''     
-        if fastQC == True:                 
+        if self.fastQC == True:                 
              for trueClassNum,imagePath in enumerate(trueClassFilesList):
                  if trueClassNum == 0:
                      tempImg = self.getImage(imagePath)
