@@ -82,7 +82,7 @@ class correlationFilters():
         if subMean == True:
             image = image - np.mean(image)
         if normVar == True:
-            image = image / (np.var(image)+1e-5)          
+            image = image / (np.std(image)+1e-5)          
         if asRow == True:
             image = image.flatten()
         return image
